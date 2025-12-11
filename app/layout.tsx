@@ -1,30 +1,35 @@
 'use client'
 
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
+import { useState, useEffect } from "react"
+import { Inter } from 'next/font/google'
+import './globals.css'
+import { Toaster } from 'react-hot-toast'
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+const inter = Inter({ subsets: ['latin'] })
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: {
+  children: React.ReactNode
+}) {
+
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [totalEarning, setTotalEarning] = useState(0)
+
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
+      <body className={inter.className}>
+        <div className="min-h-screen bg-gray-50 flex flex-col">
+          {/* header */}
+          <div className="flex flex-1">
+            {/* sidebar */}
+            <main className="flex-1 p-4 lg:p-8 ml-0 lg:ml-64 transition-all duration-300">
+              {children}
+            </main>
+          </div>
+        </div>
+        <Toaster />
       </body>
     </html>
-  );
+  )
 }
