@@ -27,7 +27,7 @@ export async function getUserByEmail(email: string) {
 
 export async function getUnreadNotifications(userId: number) {
     try {
-        const [notifications] = await db.select().from(Notification).where(and(eq(Notification.userId, userId), eq(Notification.isRead, false))).execute();
+        const notifications = await db.select().from(Notification).where(and(eq(Notification.userId, userId), eq(Notification.isRead, false))).execute();
         return notifications;
     } catch (error) {
         console.error('Error fetching unread notifications', error)
@@ -64,5 +64,13 @@ export async function getRewardTransactions(userId: number) {
     } catch (error) {
         console.error('Error fetching reward transactions', error)
         return null;
+    }
+}
+
+export async function markNotificationAsRead(notificationId: number) {
+    try {
+        await db.update(Notification).set({ isRead: true }).where(eq(Notification.id, notificationId)).execute();
+    } catch (error) {
+        console.error('Error marking notification as read', error)
     }
 }

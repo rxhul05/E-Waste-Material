@@ -4,17 +4,17 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Button } from "./ui/button"
-import { Menu, Coins, Leaf, Search, Bell, ChevronDown, LogIn, LogOut } from "lucide-react"
+import { Menu, Coins, Leaf, Search, Bell, ChevronDown, LogIn, LogOut, MenuIcon } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu"
 import { Badge } from "./ui/badge"
 import { Web3Auth } from "@web3auth/modal"
 import { CHAIN_NAMESPACES, IProvider, WEB3AUTH_NETWORK } from "@web3auth/base"
 import { EthereumPrivateKeyProvider } from "@web3auth/ethereum-provider"
-import { createUser, getUnreadNotifications, getUserBalance, getUserByEmail } from "@/utils/db/actions"
+import { createUser, getUnreadNotifications, getUserBalance, getUserByEmail, markNotificationAsRead } from "@/utils/db/actions"
 // import {useMediaQuery} from "next/hooks"
 
-const clientId = process.env.WEB3_AUTH_CLIENT_ID!
-const ChainConfig = {
+const clientId = process.env.WEB3_AUTH_CLIENT_ID
+const chainConfig = {
     chainNamespace: CHAIN_NAMESPACES.EIP155,
     chainId: '0xaa36a7',
     rpcTarget: "https://rpc.ankr.com/eth_sepolia",
@@ -26,13 +26,22 @@ const ChainConfig = {
 }
 
 const privateKeyProvider = new EthereumPrivateKeyProvider({
-    config: chainConfig,
+    config: { chainConfig },
 })
 const web3Auth = new Web3Auth({
     clientId,
     network: WEB3AUTH_NETWORK.TESTNET,
     privateKeyProvider,
 })
+
+interface Notification {
+    id: number;
+    userId: number;
+    title: string;
+    message: string;
+    isRead: boolean;
+    createdAt: Date;
+}
 
 interface HeaderProps {
     onMenuClick: () => void,
@@ -157,4 +166,46 @@ export default function Header({ onMenuClick, totalEarnings }: HeaderProps) {
             console.error('Error logging out', error)
         }
     }
+
+    const getUserInfo = async () => {
+        if (!web3Auth.connected) {
+            const user = await web3Auth.getUserInfo();
+            setUserInfo(user);
+
+            if (user.email) {
+                localStorage.setItem('userEmail', user.email)
+                try {
+                    await createUser(user.email, user.name || "Anonymous user")
+                } catch (error) {
+                    console.error('Error creating user', error)
+                }
+            }
+        }
+    }
+
+    const handleNotificationClick = async (notificationId: number) => {
+        await markNotificationAsRead(notificationId)
+    }
+
+    if (loading) {
+        return <div>Loading web3 auth.....</div>
+    }
+
+    return (
+        <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
+            <div className="flex items-center justify-between px-4 py-2">
+                <div className="flex items-center">
+                    <Button
+                        variant={'ghost'}
+                        size={'icon'}
+                        className="mr-2 md:mr-4"
+                        onClick={onMenuClick}
+                    >
+                        <MenuIcon className="h-6 w-6" />
+                    </Button>
+                </div>
+            </div>
+        </header>
+    )
+
 }
