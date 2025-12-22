@@ -35,15 +35,6 @@ const web3Auth = new Web3Auth({
     privateKeyProvider,
 })
 
-interface Notification {
-    id: number;
-    userId: number;
-    title: string;
-    message: string;
-    isRead: boolean;
-    createdAt: Date;
-}
-
 interface HeaderProps {
     onMenuClick: () => void,
     totalEarnings: number,
@@ -62,7 +53,7 @@ export default function Header({ onMenuClick, totalEarnings }: HeaderProps) {
     useEffect(() => {
         const init = async () => {
             try {
-                await web3Auth.init()
+                await web3Auth.initModal()
                 setProvider(web3Auth.provider)
 
                 if (web3Auth.connected) {
