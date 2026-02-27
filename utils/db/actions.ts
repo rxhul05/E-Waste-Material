@@ -1,6 +1,8 @@
 'use server'
 
+import { revalidatePath } from 'next/cache';
 import { db } from "./dbConfig";
+
 import {
     collection,
     addDoc,
@@ -177,7 +179,10 @@ export async function createReport(
         batch.set(reportRef, reportData);
 
         // 2. Update Reward Points (find existing or create new)
-        const pointsEarned = 10;
+        // Calculate points based on amount if possible, else default to 10
+        const amountValue = parseInt(amount) || 0;
+        const pointsEarned = amountValue > 0 ? amountValue * 10 : 10;
+
         const rewardsRef = collection(db, "rewards");
         const q = query(rewardsRef, where("userId", "==", userId));
         const querySnapshot = await getDocs(q);
@@ -195,7 +200,7 @@ export async function createReport(
                 points: pointsEarned,
                 updatedAt: new Date(),
                 createdAt: new Date(),
-                isAvailable: true,
+                isAvailable: true, // Keep true for now as they might expect it, but we filter based on userId
                 name: 'Waste Collection Reward',
                 collectionInfo: 'Points earned from waste collection'
             });
@@ -223,6 +228,9 @@ export async function createReport(
 
         await batch.commit();
 
+        revalidatePath('/leaderboard');
+        revalidatePath('/rewards');
+
         return {
             id: reportRef.id,
             ...reportData,
@@ -246,6 +254,7 @@ export async function updateRewardPoints(userId: string, pointsToAdd: number) {
                 points: increment(pointsToAdd),
                 updatedAt: new Date()
             });
+            revalidatePath('/leaderboard');
             // Fetch fresh data to ensure correct points return
             const updatedDoc = await getDoc(rewardDoc.ref);
             return serializeDoc(updatedDoc);
@@ -257,10 +266,11 @@ export async function updateRewardPoints(userId: string, pointsToAdd: number) {
                 updatedAt: new Date(),
                 createdAt: new Date(),
                 isAvailable: true,
-                name: 'Waste Collection Reward', // accurate defaults?
+                name: 'Waste Collection Reward',
                 collectionInfo: 'Points earned from waste collection'
             };
             const newDocRef = await addDoc(rewardsRef, newReward);
+            revalidatePath('/leaderboard');
             return { id: newDocRef.id, ...newReward };
         }
     } catch (error) {
@@ -330,18 +340,21 @@ export async function getAvailableRewards(userId: string) {
         }, 0);
 
         // Get available rewards
-        // Note: Logic logic implies fetching "REDEEMABLE" items. 
-        // Original code queried 'Rewards' table with isAvailable=true.
+        // Filter out User Balance records (items that have a userId)
+        // We only want Catalog items (which should NOT have a specific userId field, or if they do, it's for creator?)
+        // Assuming Catalog items have NO userId field or a specific type. 
+        // For now, filtering where userId is null or empty string is safest if we can't query it easily.
+        // Queries: Not easily possible to query "where field is missing" in Firestore without complex setup.
+        // We will filter in memory.
+
         const rewardsRef = collection(db, "rewards");
         const qRewards = query(rewardsRef, where("isAvailable", "==", true));
         const rewardSnapshot = await getDocs(qRewards);
-        const dbRewards = rewardSnapshot.docs.map(serializeDoc) as any[];
+        const allRewards = rewardSnapshot.docs.map(serializeDoc) as any[];
 
-        // Filter out the user's own reward balance entry usually?
-        // But original code didn't filter.
-        // We act as if 'rewards' collection contains items to redeem.
+        const catalogRewards = allRewards.filter(r => !r.userId || r.userId === '');
 
-        const allRewards = [
+        return [
             {
                 id: "0", // Use a special ID for user's points display which we can keep as number 0 or string '0'
                 name: "Your Points",
@@ -349,10 +362,8 @@ export async function getAvailableRewards(userId: string) {
                 description: "Redeem your earned points",
                 collectionInfo: "Points earned from reporting and collecting waste"
             },
-            ...dbRewards
+            ...catalogRewards
         ];
-
-        return allRewards;
     } catch (error) {
         console.error("Error fetching available rewards:", error);
         return [];
@@ -516,34 +527,24 @@ export async function getAllRewards() {
         const q = query(rewardsRef, orderBy("points", "desc"));
         const querySnapshot = await getDocs(q);
 
-        const rewards = querySnapshot.docs.map(serializeDoc) as any[];
+        const allRewards = querySnapshot.docs.map(serializeDoc) as any[];
+
+        // Filter: Only include items that HAVE a userId (User Balance Records)
+        // Exclude Catalog items (which have no userId)
+        const userRewards = allRewards.filter(r => r.userId && r.userId !== '');
 
         // Filter for unique userIds from rewards
-        const userIds = Array.from(new Set(rewards.map(r => r.userId))).filter(Boolean);
+        const userIds = Array.from(new Set(userRewards.map(r => r.userId))).filter(Boolean);
 
         const usersMap = new Map();
-
-        // Fetch users in chunks (limit is usually 10 or 30 for 'in' queries)
-        // Firestore limit for 'in' is 10.
-        // Or 30? Docs says: "in" query supports up to 10 comparison values.
 
         if (userIds.length > 0) {
             const chunkSize = 10;
             for (let i = 0; i < userIds.length; i += chunkSize) {
                 const chunk = userIds.slice(i, i + chunkSize);
                 const usersRef = collection(db, "users");
-                const qUsers = query(usersRef, where("__name__", "in", chunk)); // __name__ checks document ID.
-                // Wait, are userIds the Document IDs?
-                // In createUser, we now use custom ID = email (sanitized).
-                // Or existing IDs?
-                // If existing users have random IDs, and userId matches that ID, then `documentId()` or `__name__` is correct.
-                // If userId is NOT the key, but a field, we should use where("id", "in", chunk) ?
-                // Firestore document IDs ARE the keys. `serializeDoc` maps doc.id to `id`.
-                // Assuming `reward.userId` points to `user.id` (document ID), then `where(documentId(), "in", chunk)` is correct.
-
-                // Note: documentId() in modular SDK is `documentId()`. I didn't import `documentId`.
-                // But `where(documentId(), ...)` needs `documentId` imported.
-                // Alternatively, `where("__name__", ...)` works directly as string.
+                // Use documentId() or __name__ to match document IDs
+                const qUsers = query(usersRef, where("__name__", "in", chunk));
 
                 try {
                     const usersSnapshot = await getDocs(qUsers);
@@ -556,7 +557,7 @@ export async function getAllRewards() {
             }
         }
 
-        return rewards.map(reward => {
+        return userRewards.map(reward => {
             const userName = usersMap.get(reward.userId) || 'Unknown User';
             const level = Math.floor(reward.points / 20) + 1;
             return {

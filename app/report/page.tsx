@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { useRouter } from 'next/navigation';
 import { toast } from 'react-hot-toast'
-import { createReport, createUser, getRecentReports, getUserByEmail } from '@/utils/db/actions';
+import { createReport, createUser, getRecentReports, getUserByEmail, getUserBalance } from '@/utils/db/actions';
 import LocationSearch from '@/components/LocationSearch';
 
 const geminiApiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
@@ -259,6 +259,9 @@ export default function ReportPage() {
             setVerificationStatus('idle');
             setVerificationResult(null);
 
+            const newBalance = await getUserBalance(user.id || (await createUser(user.email, user.name)).id);
+            const balanceEvent = new CustomEvent('balanceUpdate', { detail: newBalance });
+            window.dispatchEvent(balanceEvent);
 
             toast.success(`Report submitted successfully! You've earned points for reporting waste.`);
         } catch (error: any) {

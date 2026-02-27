@@ -2,6 +2,11 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /* config options here */
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '10mb',
+    },
+  },
   env: {
     DATABASE_URL: process.env.DATABASE_URL,
     NEXT_PUBLIC_GEMINI_API_KEY: process.env.NEXT_PUBLIC_GEMINI_API_KEY,
